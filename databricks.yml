@@ -1,0 +1,33 @@
+# This is a Declarative Automation Bundle definition for payer_01_extracts.
+# The Databricks extension requires databricks.yml configuration file.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+
+bundle:
+  name: payer_01_extracts
+
+include:
+  - resources/*.yml 
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-536d8077-bb93.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+  test:
+    mode: production
+    workspace:
+      host: https://dbc-536d8077-bb93.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    presets:
+      name_prefix: "[test] "
+
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-536d8077-bb93.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    presets:
+      name_prefix: "[prod] "
