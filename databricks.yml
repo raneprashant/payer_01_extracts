@@ -8,16 +8,40 @@ bundle:
 include:
   - resources/*.yml 
 
+variables:
+  catalog_name:
+    description: Environment-specific Unity Catalog
+
+  source_schema:
+    description: Source schema for extracts
+    default: silver
+
+  extract_schema:
+    description: Staging schema for extracts
+    default: extract_stg
+
+
 targets:
   dev:
     mode: development
     default: true
+    variables:
+      catalog_name: payer_01_dev
+      source_schema: silver
+      extract_schema: extract_stg
+      
     workspace:
       host: https://dbc-536d8077-bb93.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
 
   test:
     mode: production
+
+    variables:
+      catalog_name: payer_01_test
+      source_schema: silver
+      extract_schema: extract_stg
+
     workspace:
       host: https://dbc-536d8077-bb93.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
@@ -26,6 +50,12 @@ targets:
 
   prod:
     mode: production
+    
+    variables:
+      catalog_name: payer_01_prod
+      source_schema: silver
+      extract_schema: extract_stg
+
     workspace:
       host: https://dbc-536d8077-bb93.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
