@@ -1,0 +1,20 @@
+resources:
+  jobs:
+    member_extract_job:
+      name: payer_01_member_extract
+      tasks:
+        - task_key: member_extract
+          spark_python_task:
+            python_file: ../src/member/member_extract.py
+            parameters:
+              - --catalog
+              - ${var.catalog_name}
+              - --source-schema
+              - ${var.source_schema}
+              - --extract-schema
+              - ${var.extract_schema}
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
