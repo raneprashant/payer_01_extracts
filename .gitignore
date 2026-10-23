@@ -1,2 +1,5 @@
 .venv/
 .databricks
+output_extracts/
+__pycache__/
+src/member/inspect_member_sources.py
