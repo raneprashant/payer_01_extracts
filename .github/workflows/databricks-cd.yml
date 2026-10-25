@@ -50,7 +50,7 @@ jobs:
           esac
 
 
-  deploy:
+  deploy-and-run:
     needs: resolve-target
     runs-on: ubuntu-latest
 
@@ -92,5 +92,42 @@ jobs:
       - name: Deploy Databricks bundle
         run: databricks bundle deploy --target "${DAB_TARGET}"
 
-      - name: Run hello job
-        run: databricks bundle run --target "${DAB_TARGET}" hello_job
+      #- name: Run hello job
+      #  run: databricks bundle run --target "${DAB_TARGET}" hello_job
+
+      - name: Run member extract
+        run: databricks bundle run --target "${DAB_TARGET}" member_extract_job
+
+
+  integration-tests:
+    needs:
+      - resolve-target
+      - deploy-and-run
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: ${{ needs.resolve-target.outputs.environment_name }}
+
+    env:
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_SERVERLESS_COMPUTE_ID: auto
+      TEST_CATALOG: ${{ vars.TEST_CATALOG }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install integration test dependencies
+        run: |
+          python -m pip install pytest
+          python -m pip install databricks-connect==17.3.14
+
+      - name: Run member integration tests
+        run: python -m pytest tests/member/integration -v
