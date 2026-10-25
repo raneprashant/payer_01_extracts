@@ -11,11 +11,23 @@ permissions:
   contents: read
 
 jobs:
+
+  # ---------------------------------------------------------
+  # 1. Validate allowed branch promotion and determine
+  #    which existing environment must be integration tested.
+  # ---------------------------------------------------------
   validate-promotion:
     runs-on: ubuntu-latest
 
+    outputs:
+      integration_required: ${{ steps.resolve.outputs.integration_required }}
+      integration_environment: ${{ steps.resolve.outputs.integration_environment }}
+      deployment_stage: ${{ steps.resolve.outputs.deployment_stage }}
+      dab_target: ${{ steps.resolve.outputs.dab_target }}
+
     steps:
-      - name: Validate promotion path and resolve stage
+      - name: Validate promotion path
+        id: resolve
         run: |
           SOURCE_BRANCH="${{ github.head_ref }}"
           TARGET_BRANCH="${{ github.base_ref }}"
@@ -24,6 +36,7 @@ jobs:
           echo "Target branch: $TARGET_BRANCH"
 
           case "$TARGET_BRANCH" in
+
             develop)
               if [[ "$SOURCE_BRANCH" != feature/* ]]; then
                 echo "Invalid promotion path: $SOURCE_BRANCH -> $TARGET_BRANCH"
@@ -31,8 +44,9 @@ jobs:
                 exit 1
               fi
 
-              echo "DEPLOYMENT_STAGE=DEV" >> "$GITHUB_ENV"
-              echo "DAB_TARGET=dev" >> "$GITHUB_ENV"
+              echo "deployment_stage=DEV" >> "$GITHUB_OUTPUT"
+              echo "dab_target=dev" >> "$GITHUB_OUTPUT"
+              echo "integration_required=false" >> "$GITHUB_OUTPUT"
               ;;
 
             release)
@@ -42,8 +56,12 @@ jobs:
                 exit 1
               fi
 
-              echo "DEPLOYMENT_STAGE=TEST" >> "$GITHUB_ENV"
-              echo "DAB_TARGET=test" >> "$GITHUB_ENV"
+              echo "deployment_stage=TEST" >> "$GITHUB_OUTPUT"
+              echo "dab_target=test" >> "$GITHUB_OUTPUT"
+
+              # Before promotion to TEST, validate DEV.
+              echo "integration_required=true" >> "$GITHUB_OUTPUT"
+              echo "integration_environment=dev" >> "$GITHUB_OUTPUT"
               ;;
 
             main)
@@ -53,8 +71,12 @@ jobs:
                 exit 1
               fi
 
-              echo "DEPLOYMENT_STAGE=PROD" >> "$GITHUB_ENV"
-              echo "DAB_TARGET=prod" >> "$GITHUB_ENV"
+              echo "deployment_stage=PROD" >> "$GITHUB_OUTPUT"
+              echo "dab_target=prod" >> "$GITHUB_OUTPUT"
+
+              # Before promotion to PROD, validate TEST.
+              echo "integration_required=true" >> "$GITHUB_OUTPUT"
+              echo "integration_environment=test" >> "$GITHUB_OUTPUT"
               ;;
 
             *)
@@ -63,13 +85,15 @@ jobs:
               ;;
           esac
 
-      - name: Show CI context
-        run: |
-          echo "Source branch: ${{ github.head_ref }}"
-          echo "Target branch: ${{ github.base_ref }}"
-          echo "Logical stage: $DEPLOYMENT_STAGE"
-          echo "Databricks target: $DAB_TARGET"
 
+  # ---------------------------------------------------------
+  # 2. Unit tests - run for every valid PR
+  # ---------------------------------------------------------
+  unit-tests:
+    needs: validate-promotion
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
@@ -84,22 +108,43 @@ jobs:
           python -m pip install pytest
 
       - name: Run unit tests
-        run: python -m pytest -v
+        run: python -m pytest tests/member/unit -v
 
-      - name: Verify project files
+
+  # ---------------------------------------------------------
+  # 3. Integration tests
+  #    develop -> release : test DEV
+  #    release -> main    : test TEST
+  # ---------------------------------------------------------
+  integration-tests:
+    needs: validate-promotion
+
+    if: needs.validate-promotion.outputs.integration_required == 'true'
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: ${{ needs.validate-promotion.outputs.integration_environment }}
+
+    env:
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_SERVERLESS_COMPUTE_ID: auto
+      TEST_CATALOG: ${{ vars.TEST_CATALOG }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install integration test dependencies
         run: |
-          pwd
-          ls -la
-          test -f databricks.yml
-          test -d src
-          test -d resources
+          python -m pip install pytest
+          python -m pip install databricks-connect==17.3.14
 
-      - name: Install Databricks CLI
-        uses: databricks/setup-cli@main
-
-      - name: Verify Databricks CLI
-        run: databricks version
-
-      - name: Confirm CI validation
-        run: |
-          echo "$DEPLOYMENT_STAGE CI validation completed successfully."
+      - name: Run member integration tests
+        run: python -m pytest tests/member/integration -v
